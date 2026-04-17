@@ -15,31 +15,36 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.util;
+package com.nageoffer.ai.ragent.rag.core.intent;
 
+import cn.hutool.core.util.StrUtil;
 import lombok.NoArgsConstructor;
 
-import java.util.regex.Pattern;
+import java.util.List;
 
 /**
- * LLM 输出清理工具类
+ * NodeScore 过滤工具类
+ * 统一 KB / MCP 意图的过滤逻辑，避免多处重复定义
  */
 @NoArgsConstructor(access = lombok.AccessLevel.PRIVATE)
-public final class LLMResponseCleaner {
-
-    private static final Pattern LEADING_CODE_FENCE = Pattern.compile("^```[\\w-]*\\s*\\n?");
-    private static final Pattern TRAILING_CODE_FENCE = Pattern.compile("\\n?```\\s*$");
+public final class NodeScoreFilters {
 
     /**
-     * 移除 Markdown 代码块围栏（例如 ```json ... ```）
+     * 过滤 MCP 类型意图（node 非空、kind=MCP、mcpToolId 非空）
      */
-    public static String stripMarkdownCodeFence(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String cleaned = raw.trim();
-        cleaned = LEADING_CODE_FENCE.matcher(cleaned).replaceFirst("");
-        cleaned = TRAILING_CODE_FENCE.matcher(cleaned).replaceFirst("");
-        return cleaned.trim();
+    public static List<NodeScore> mcp(List<NodeScore> scores) {
+        return scores.stream()
+                .filter(ns -> ns.getNode() != null && ns.getNode().isMCP())
+                .filter(ns -> StrUtil.isNotBlank(ns.getNode().getMcpToolId()))
+                .toList();
+    }
+
+    /**
+     * 过滤 KB 类型意图（node 非空、kind 为 null 或 KB）
+     */
+    public static List<NodeScore> kb(List<NodeScore> scores) {
+        return scores.stream()
+                .filter(ns -> ns.getNode() != null && ns.getNode().isKB())
+                .toList();
     }
 }
