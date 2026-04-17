@@ -123,16 +123,17 @@ ai:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
 
+#熔断策略
   selection:
-    failure-threshold: 2
-    open-duration-ms: 30000
+    failure-threshold: 2  # 连续失败 2 次触发熔断
+    open-duration-ms: 30000 # 熔断持续 30 秒
 
   stream:
-    message-chunk-size: 1
+    message-chunk-size: 1 # 流式消息合并块大小
 
   chat:
-    default-model: qwen3-max
-    deep-thinking-model: qwen3-max
+    default-model: qwen3-max  # 默认使用的模型
+    deep-thinking-model: qwen3-max  # 深度思考模型
     candidates:
       - id: qwen-plus
         provider: bailian

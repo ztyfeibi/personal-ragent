@@ -295,6 +295,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
      * 使用分块策略处理文档，失败直接抛异常，由 runChunkTask 统一处理错误状态
      * 4 阶段中的前 3 阶段：Extract → Chunk → Embed
      */
+    /**
+     * 基于文档配置执行 CHUNK 模式的前三个阶段：Extract -> Chunk -> Embed。
+     * <p>
+     * 这个方法只负责内容提取、分块和向量化，不负责写入 chunk 表或向量库；
+     * 持久化动作统一由 {@link #persistChunksAndVectorsAtomically(String, String, List)} 完成。
+     *
+     * @param documentDO 文档实体，需包含文件地址、知识库 ID、切块策略与切块配置
+     * @return 分块结果以及 Extract、Chunk、Embed 三段耗时
+     * @throws RuntimeException 任一阶段失败时抛出，由上层 runChunkTask 统一更新失败状态
+     */
     private ChunkProcessResult runChunkProcess(KnowledgeDocumentDO documentDO) {
         ChunkingMode chunkingMode = ChunkingMode.fromValue(documentDO.getChunkStrategy());
         KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(documentDO.getKbId());
@@ -303,15 +313,18 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
         long extractStart = System.currentTimeMillis();
         try (InputStream is = fileStorageService.openStream(documentDO.getFileUrl())) {
+            // Extract: 将原始文件流解析成统一的纯文本表示，供后续切块使用。
             String text = parserSelector.select(ParserType.TIKA.getType()).extractText(is, documentDO.getDocName());
             long extractDuration = System.currentTimeMillis() - extractStart;
 
             ChunkingStrategy chunkingStrategy = chunkingStrategyFactory.requireStrategy(chunkingMode);
             long chunkStart = System.currentTimeMillis();
+            // Chunk: 根据 chunkStrategy 与 chunkConfig 生成语义分块。
             List<VectorChunk> chunks = chunkingStrategy.chunk(text, config);
             long chunkDuration = System.currentTimeMillis() - chunkStart;
 
             long embedStart = System.currentTimeMillis();
+            // Embed: 为每个分块补齐向量，此阶段仅计算 embedding，不落向量库。
             chunkEmbeddingService.embed(chunks, embeddingModel);
             long embedDuration = System.currentTimeMillis() - embedStart;
 
