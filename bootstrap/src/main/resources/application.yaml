@@ -7,6 +7,8 @@ spring:
   application:
     name: ragent${unique-name:}-service
 
+  host: 192.168.1.100
+
   servlet:
     multipart:
       max-file-size: 50MB
@@ -17,7 +19,7 @@ spring:
     type: com.zaxxer.hikari.HikariDataSource
     username: postgres
     password: postgres
-    url: jdbc:postgresql://127.0.0.1:5432/ragent?client_encoding=UTF8
+    url: jdbc:postgresql://${spring.host}:5432/ragent?client_encoding=UTF8
     hikari:
       connection-timeout: 5000
       idle-timeout: 600000
@@ -28,18 +30,18 @@ spring:
 
   data:
     redis:
-      host: 127.0.0.1
+      host: ${spring.host}
       port: 6379
       password: 123456
 
 rocketmq:
-  name-server: 127.0.0.1:9876
+  name-server: ${spring.host}:9876
   producer:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
 
 milvus:
-  uri: http://localhost:19530
+  uri: http://${spring.host}:19530
 
 rag:
   vector:
@@ -88,7 +90,7 @@ rag:
   mcp:
     servers:
       - name: default
-        url: http://localhost:9099
+        url: http://${spring.host}:9099
 
   search:
     channels:
@@ -106,7 +108,7 @@ rag:
 ai:
   providers:
     ollama:
-      url: http://localhost:11434
+      url: http://${spring.host}:11434
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
@@ -181,7 +183,7 @@ ai:
         priority: 100
 
 rustfs:
-  url: http://localhost:9000
+  url: http://${spring.host}:9000
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
 

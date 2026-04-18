@@ -27,6 +27,8 @@
         <rocketmq-spring-boot-starter.version>2.3.5</rocketmq-spring-boot-starter.version>
         <okhttp.version>4.12.0</okhttp.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
+
+        <argLine></argLine>
     </properties>
 
     <modules>
