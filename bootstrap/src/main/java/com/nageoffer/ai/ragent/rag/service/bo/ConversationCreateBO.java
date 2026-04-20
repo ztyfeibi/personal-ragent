@@ -15,33 +15,41 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.embedding;
+package com.nageoffer.ai.ragent.rag.service.bo;
 
-import com.google.gson.JsonObject;
-import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
-import com.nageoffer.ai.ragent.infra.model.ModelTarget;
-import okhttp3.OkHttpClient;
-import org.springframework.stereotype.Service;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Service
-public class OllamaEmbeddingClient extends AbstractOpenAIStyleEmbeddingClient {
+import java.util.Date;
 
-    public OllamaEmbeddingClient(OkHttpClient syncHttpClient) {
-        super(syncHttpClient);
-    }
+/**
+ * 会话创建/更新业务对象
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ConversationCreateBO {
 
-    @Override
-    public String provider() {
-        return ModelProvider.OLLAMA.getId();
-    }
+    /**
+     * 会话ID
+     */
+    private String conversationId;
 
-    @Override
-    protected boolean requiresApiKey() {
-        return false;
-    }
+    /**
+     * 用户ID
+     */
+    private String userId;
 
-    @Override
-    protected void customizeRequestBody(JsonObject body, ModelTarget target) {
-        // Ollama 不需要 encoding_format 字段
-    }
+    /**
+     * 用户问题
+     */
+    private String question;
+
+    /**
+     * 最后更新时间
+     */
+    private Date lastTime;
 }

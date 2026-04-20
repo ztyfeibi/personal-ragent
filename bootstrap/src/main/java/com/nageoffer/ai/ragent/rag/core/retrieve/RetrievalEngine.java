@@ -46,9 +46,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
@@ -62,8 +60,6 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY
 @RequiredArgsConstructor
 public class RetrievalEngine {
 
-    private static final long MCP_TOOL_TIMEOUT_SECONDS = 30;
-
     private final ContextFormatter contextFormatter;
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
@@ -75,17 +71,11 @@ public class RetrievalEngine {
 
     /**
      * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
-     *
-     * @param subIntents 子问题意图列表，包含每个子问题及其相关的意图节点和评分
-     * @param topK       需要返回的最相关结果数量，若 ≤0 则使用默认值
-     * @return RetrievalContext 检索上下文，包含知识库上下文、MCP上下文和分组的检索块
      */
     @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
     public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK) {
         if (CollUtil.isEmpty(subIntents)) {
             return RetrievalContext.builder()
-                    .mcpContext("")
-                    .kbContext("")
                     .intentChunks(Map.of())
                     .build();
         }
@@ -113,7 +103,7 @@ public class RetrievalEngine {
 
         StringBuilder kbBuilder = new StringBuilder();
         StringBuilder mcpBuilder = new StringBuilder();
-        Map<String, List<RetrievedChunk>> mergedIntentChunks = new ConcurrentHashMap<>();
+        Map<String, List<RetrievedChunk>> mergedIntentChunks = new HashMap<>();
 
         for (SubQuestionContext context : contexts) {
             if (StrUtil.isNotBlank(context.kbContext())) {
@@ -148,9 +138,7 @@ public class RetrievalEngine {
     }
 
     /**
-     * 子问题实际 TopK 计算规则：
-     * 1. 命中 KB 意图节点且配置了节点级 topK：取最大值（多意图保守放大）
-     * 2. 没有任何可用节点级 topK：回退到全局 topK
+     * 子问题实际 TopK 计算规则
      */
     private int resolveSubQuestionTopK(SubQuestionIntent intent, int fallbackTopK) {
         return NodeScoreFilters.kb(intent.nodeScores()).stream()
@@ -193,7 +181,7 @@ public class RetrievalEngine {
         }
 
         // 按意图节点分组（用于格式化上下文）
-        Map<String, List<RetrievedChunk>> intentChunks = new ConcurrentHashMap<>();
+        Map<String, List<RetrievedChunk>> intentChunks = new HashMap<>();
 
         // 如果有意图识别结果，按意图节点 ID 分组
         if (CollUtil.isNotEmpty(kbIntents)) {
@@ -218,19 +206,19 @@ public class RetrievalEngine {
         }
 
         List<CompletableFuture<MCPResponse>> futures = mcpIntentScores.stream()
-                .map(ns -> {
-                    String toolId = ns.getNode().getMcpToolId();
-                    return CompletableFuture
-                            .supplyAsync(() -> {
+                .map(ns -> CompletableFuture.supplyAsync(
+                        () -> {
+                            try {
                                 MCPRequest request = buildMcpRequest(question, ns.getNode());
                                 return request == null ? null : executeSingleMcpTool(request);
-                            }, mcpBatchExecutor)
-                            .orTimeout(MCP_TOOL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                            .exceptionally(e -> {
-                                log.error("MCP 工具调用超时或异常, toolId: {}", toolId, e);
-                                return MCPResponse.error(toolId, "TIMEOUT", "工具调用超时或异常: " + e.getMessage());
-                            });
-                })
+                            } catch (Exception e) {
+                                String toolId = ns.getNode().getMcpToolId();
+                                log.error("MCP 工具调用异常, toolId: {}", toolId, e);
+                                return MCPResponse.error(toolId, "EXECUTION_ERROR", "工具调用异常: " + e.getMessage());
+                            }
+                        },
+                        mcpBatchExecutor
+                ))
                 .toList();
 
         return futures.stream()

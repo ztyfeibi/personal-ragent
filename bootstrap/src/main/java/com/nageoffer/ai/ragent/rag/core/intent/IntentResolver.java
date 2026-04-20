@@ -32,7 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
 import java.util.concurrent.Executor;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_MIN_SCORE;
@@ -206,7 +206,7 @@ public class IntentResolver {
         allSelected.addAll(additionalIntents);
 
         // 按子问题索引分组
-        Map<Integer, List<NodeScore>> groupedByIndex = new ConcurrentHashMap<>();
+        Map<Integer, List<NodeScore>> groupedByIndex = new HashMap<>();
         for (IntentCandidate candidate : allSelected) {
             groupedByIndex.computeIfAbsent(candidate.subQuestionIndex(), k -> new ArrayList<>())
                     .add(candidate.nodeScore());
