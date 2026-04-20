@@ -7,7 +7,7 @@ spring:
   application:
     name: ragent${unique-name:}-service
 
-  host: 192.168.1.100
+  host: 192.168.169.207
 
   servlet:
     multipart:
@@ -114,13 +114,13 @@ ai:
         embedding: /v1/embeddings
     bailian:
       url: https://dashscope.aliyuncs.com
-      api-key: ${BAILIAN_API_KEY:}
+      api-key: sk-4e2cc59175d44756bc2cd257f39780ef
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
     siliconflow:
       url: https://api.siliconflow.cn
-      api-key: ${SILICONFLOW_API_KEY:}
+      api-key: sk-ntxujmdxzcuhsmbxzndjeoajjmdotcmanqbsamffacrdyowe
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
@@ -139,7 +139,7 @@ ai:
     candidates:
       - id: qwen-plus
         provider: bailian
-        model: qwen-plus-latest
+        model: qwen3.5-plus-2026-02-15
         priority: 1
       - id: qwen3-max
         provider: bailian

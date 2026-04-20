@@ -77,7 +77,7 @@ CREATE TABLE t_message (
     deleted           SMALLINT    DEFAULT 0
 );
 CREATE INDEX idx_conversation_user_time ON t_message (conversation_id, user_id, create_time);
-CREATE INDEX idx_conversation_summary ON t_message (conversation_id, user_id, create_time);
+-- CREATE INDEX idx_conversation_summary ON t_message (conversation_id, user_id, create_time);
 COMMENT ON TABLE t_message IS '会话消息记录表';
 
 CREATE TABLE t_message_feedback (
@@ -106,7 +106,7 @@ CREATE TABLE t_sample_question (
     update_time TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
     deleted     SMALLINT      DEFAULT 0
 );
-CREATE INDEX idx_sample_question_deleted ON t_sample_question (deleted);
+-- CREATE INDEX idx_sample_question_deleted ON t_sample_question (deleted);
 COMMENT ON TABLE t_sample_question IS '示例问题表';
 
 -- ============================================
