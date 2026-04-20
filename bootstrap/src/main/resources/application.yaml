@@ -93,10 +93,11 @@ rag:
       - name: default
         url: http://${spring.host}:9099
 
+# 检索相关
   search:
     channels:
       vector-global:
-        confidence-threshold: 0.6
+        confidence-threshold: 0.6 # 意图置信度低于此值时启用
         top-k-multiplier: 3
       intent-directed:
         min-intent-score: 0.4
