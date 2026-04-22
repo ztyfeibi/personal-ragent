@@ -38,6 +38,16 @@ public class ModelRoutingExecutor {
 
     private final ModelHealthStore healthStore;
 
+    /**
+     *
+     * @param capability
+     * @param targets
+     * @param clientResolver 函数式接口，第一个是接收参数，第二个是返回结果
+     * @param caller
+     * @return
+     * @param <C>
+     * @param <T>
+     */
     public <C, T> T executeWithFallback(
             ModelCapability capability,
             List<ModelTarget> targets,

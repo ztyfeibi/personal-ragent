@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
- * 轻量 Token 估算服务
+ * 杞婚噺 Token 浼扮畻鏈嶅姟
  */
 @Service
 public class HeuristicTokenCounterService implements TokenCounterService {
@@ -36,6 +36,7 @@ public class HeuristicTokenCounterService implements TokenCounterService {
         int cjkCount = 0;
         int otherCount = 0;
 
+        // 粗略分类字符进行计数，转换计数 =》 token估计
         for (int i = 0; i < text.length(); i++) {
             char ch = text.charAt(i);
             if (Character.isWhitespace(ch)) {
@@ -50,13 +51,14 @@ public class HeuristicTokenCounterService implements TokenCounterService {
             }
         }
 
-        int asciiTokens = (asciiCount + 3) / 4; // 英文等按 4 字符约 1 token
-        int otherTokens = (otherCount + 1) / 2; // 其他字符按 2 字符约 1 token
+        int asciiTokens = (asciiCount + 3) / 4;
+        int otherTokens = (otherCount + 1) / 2;
         int total = asciiTokens + cjkCount + otherTokens;
         return Math.max(total, 1);
     }
 
     private boolean isCjk(char ch) {
+        // Treat CJK ideographs, kana, hangul, and related punctuation blocks as CJK text.
         Character.UnicodeBlock block = Character.UnicodeBlock.of(ch);
         return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
                 || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A

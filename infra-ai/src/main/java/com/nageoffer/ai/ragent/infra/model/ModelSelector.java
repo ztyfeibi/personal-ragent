@@ -42,20 +42,31 @@ public class ModelSelector {
     private final AIModelProperties properties;
     private final ModelHealthStore healthStore;
 
+    /**
+     * 聊天模型候选
+     * @param deepThinking 是否思考
+     */
     public List<ModelTarget> selectChatCandidates(boolean deepThinking) {
         AIModelProperties.ModelGroup group = properties.getChat();
         if (group == null) {
             return List.of();
         }
 
+        // 找首选模型，深度思考模式优先使用专门配置的模型，否则使用默认模型
         String firstChoiceModelId = resolveFirstChoiceModel(group, deepThinking);
         return selectCandidates(group, firstChoiceModelId, deepThinking);
     }
 
+    /**
+     * 词嵌入模型
+     */
     public List<ModelTarget> selectEmbeddingCandidates() {
         return selectCandidates(properties.getEmbedding());
     }
 
+    /**
+     * 重排序模型
+     */
     public List<ModelTarget> selectRerankCandidates() {
         return selectCandidates(properties.getRerank());
     }
@@ -89,21 +100,22 @@ public class ModelSelector {
     }
 
     /**
-     * 过滤并排序候选模型列表
+     * 过滤掉“不该参与本次调用”的模型
+     * 把剩下的模型按“谁应该优先被尝试”排好顺序
      */
     private List<AIModelProperties.ModelCandidate> filterAndSortCandidates(List<AIModelProperties.ModelCandidate> candidates,
                                                                            String firstChoiceModelId,
                                                                            boolean deepThinking) {
         List<AIModelProperties.ModelCandidate> enabled = candidates.stream()
-                .filter(c -> c != null && !Boolean.FALSE.equals(c.getEnabled()))
-                .filter(c -> !deepThinking || Boolean.TRUE.equals(c.getSupportsThinking()))
+                .filter(c -> c != null && !Boolean.FALSE.equals(c.getEnabled())) // 过滤空对象、被禁用的模型。
+                .filter(c -> !deepThinking || Boolean.TRUE.equals(c.getSupportsThinking())) // 保留对应思考模式的模型
                 .sorted(Comparator
                         .comparing((AIModelProperties.ModelCandidate c) ->
-                                !Objects.equals(resolveId(c), firstChoiceModelId))
+                                !Objects.equals(resolveId(c), firstChoiceModelId)) // 把“本次首选模型”排到最前面
                         .thenComparing(AIModelProperties.ModelCandidate::getPriority,
-                                Comparator.nullsLast(Integer::compareTo))
+                                Comparator.nullsLast(Integer::compareTo)) // 按 priority 升序
                         .thenComparing(AIModelProperties.ModelCandidate::getId,
-                                Comparator.nullsLast(String::compareTo)))
+                                Comparator.nullsLast(String::compareTo))) // 按 id 字典序
                 .collect(Collectors.toList());
 
         if (deepThinking && enabled.isEmpty()) {

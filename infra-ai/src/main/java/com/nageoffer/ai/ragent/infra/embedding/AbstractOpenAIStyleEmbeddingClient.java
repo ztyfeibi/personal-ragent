@@ -95,6 +95,7 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
             return doEmbed(texts, target);
         }
 
+        // 创建一个长度和输入 texts 一样的结果列表，里面先全放 null
         List<List<Float>> results = new ArrayList<>(Collections.nCopies(texts.size(), null));
         for (int i = 0, n = texts.size(); i < n; i += batch) {
             int end = Math.min(i + batch, n);

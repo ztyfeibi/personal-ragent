@@ -55,6 +55,9 @@ public class RoutingEmbeddingService implements EmbeddingService {
                 .collect(Collectors.toMap(EmbeddingClient::provider, Function.identity()));
     }
 
+    /**
+     * 选择默认模型，并返回第一个成功的embedding结果
+     */
     @Override
     public List<Float> embed(String text) {
         return executor.executeWithFallback(
@@ -65,6 +68,9 @@ public class RoutingEmbeddingService implements EmbeddingService {
         );
     }
 
+    /**
+     * 选择指定模型
+     */
     @Override
     public List<Float> embed(String text, String modelId) {
         return executor.executeWithFallback(
@@ -75,6 +81,9 @@ public class RoutingEmbeddingService implements EmbeddingService {
         );
     }
 
+    /**
+     * 批量
+     */
     @Override
     public List<List<Float>> embedBatch(List<String> texts) {
         return executor.executeWithFallback(
@@ -95,10 +104,16 @@ public class RoutingEmbeddingService implements EmbeddingService {
         );
     }
 
+    /**
+     * 按 provider 找到具体 embedding 客户端
+     */
     private EmbeddingClient resolveClient(ModelTarget target) {
         return clientsByProvider.get(target.candidate().getProvider());
     }
 
+    /**
+     * 按 modelId 找到具体模型目标，并在为空或不可用时快速失败
+     */
     private ModelTarget resolveTarget(String modelId) {
         if (!StringUtils.hasText(modelId)) {
             throw new RemoteException("Embedding 模型ID不能为空");

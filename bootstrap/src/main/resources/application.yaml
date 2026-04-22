@@ -136,7 +136,7 @@ ai:
     message-chunk-size: 1 # 流式消息合并块大小
 
   chat:
-    default-model: qwen3-max  # 默认使用的模型
+    default-model: qwen3-plus  # 默认使用的模型
     deep-thinking-model: qwen3-max  # 深度思考模型
     candidates:
       - id: qwen-plus
