@@ -31,18 +31,22 @@ import java.util.function.Consumer;
 /**
  * 流式任务异步执行器
  * 统一处理线程池提交、拒绝兜底和取消句柄构建逻辑
+ *
+ * 把一个“流式任务”扔到线程池里异步执行，并返回一个“可取消句柄”；如果线程池太忙提交失败，就取消网络请求并回调错误。
  */
 @NoArgsConstructor(access = lombok.AccessLevel.PRIVATE)
 public final class StreamAsyncExecutor {
 
     private static final String STREAM_BUSY_MESSAGE = "流式线程池繁忙";
 
+    // 返回流式取消句柄
     static StreamCancellationHandle submit(Executor executor,
                                            Call call,
                                            StreamCallback callback,
                                            Consumer<AtomicBoolean> streamTask) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         try {
+            // 异步执行一个没有返回值的任务，提交到线程池执行
             CompletableFuture.runAsync(() -> streamTask.accept(cancelled), executor);
         } catch (RejectedExecutionException ex) {
             call.cancel();
