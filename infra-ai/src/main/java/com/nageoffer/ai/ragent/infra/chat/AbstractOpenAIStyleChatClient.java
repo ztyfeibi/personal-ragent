@@ -127,19 +127,23 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
     // ==================== 模板方法：流式调用 ====================
 
     protected StreamCancellationHandle doStreamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
+        // 获取模型provider
         AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target, provider());
         if (requiresApiKey()) {
             HttpResponseHelper.requireApiKey(provider, provider());
         }
 
+        // 构造模型请求体，在这里把用户问题塞进去call里
         JsonObject reqBody = buildRequestBody(request, target, true);
         Request streamRequest = newAuthorizedRequest(provider, target)
                 .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
                 .addHeader("Accept", "text/event-stream")
                 .build();
 
+        // 获取http call
         Call call = streamingHttpClient.newCall(streamRequest);
         boolean reasoningEnabled = isReasoningEnabledForStream(request);
+        // 提交任务到线程池
         return StreamAsyncExecutor.submit(
                 modelStreamExecutor,
                 call,

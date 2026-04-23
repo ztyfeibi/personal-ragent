@@ -48,6 +48,8 @@ final class ProbeStreamBridge implements StreamCallback {
         this.downstream = downstream;
     }
 
+    /**********************首包探测的4种可能结果****************************/
+
     /**
      * 处理正常内容事件，将探测标记为成功，并转发或缓冲回调。
      */

@@ -106,6 +106,7 @@ public class RoutingLLMService implements LLMService {
         String label = ModelCapability.CHAT.getDisplayName();
         Throwable lastError = null;
 
+        // 遍历模型
         for (ModelTarget target : targets) {
             ChatClient client = resolveClient(target, label);
             if (client == null) {
@@ -117,6 +118,8 @@ public class RoutingLLMService implements LLMService {
 
             ProbeStreamBridge bridge = new ProbeStreamBridge(callback);
 
+            // 把任务线程提交到线程池，获取任务线程取消句柄
+            // 当前模型的配置（url、apikey什么的可能有问题，所有要做处理）
             StreamCancellationHandle handle;
             try {
                 handle = client.streamChat(request, bridge, target);
@@ -135,6 +138,7 @@ public class RoutingLLMService implements LLMService {
                 continue;
             }
 
+            // 同步等待首包探测结果
             ProbeStreamBridge.ProbeResult result = awaitFirstPacket(bridge, handle, callback);
 
             if (result.isSuccess()) {
