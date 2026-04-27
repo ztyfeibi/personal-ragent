@@ -81,6 +81,7 @@ public class RetrievalEngine {
         }
 
         int finalTopK = topK > 0 ? topK : DEFAULT_TOP_K;
+        // 构建每个问题的查询任务
         List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
                 .map(si -> CompletableFuture.supplyAsync(
                         () -> {
@@ -105,6 +106,7 @@ public class RetrievalEngine {
         StringBuilder mcpBuilder = new StringBuilder();
         Map<String, List<RetrievedChunk>> mergedIntentChunks = new HashMap<>();
 
+        // 获取mcp和kb的检索结果 + 查询到的chunk
         for (SubQuestionContext context : contexts) {
             if (StrUtil.isNotBlank(context.kbContext())) {
                 appendSection(kbBuilder, context.question(), context.kbContext());

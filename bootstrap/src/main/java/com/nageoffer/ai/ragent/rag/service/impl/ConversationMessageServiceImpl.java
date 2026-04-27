@@ -40,6 +40,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 是更面向“消息生命周期”的服务，负责新增消息、查询消息列表、保存摘要。
+ */
 @Service
 @RequiredArgsConstructor
 public class ConversationMessageServiceImpl implements ConversationMessageService {

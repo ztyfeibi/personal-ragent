@@ -31,6 +31,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * 底层的“会话聚合查询服务”：查消息
+ */
 @Service
 @RequiredArgsConstructor
 public class ConversationGroupServiceImpl implements ConversationGroupService {

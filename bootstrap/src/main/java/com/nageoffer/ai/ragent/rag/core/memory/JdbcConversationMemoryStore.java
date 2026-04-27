@@ -50,9 +50,12 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
         this.memoryProperties = memoryProperties;
     }
 
+    /**
+     * 从数据库取出最近n论历史对话
+     */
     @Override
     public List<ChatMessage> loadHistory(String conversationId, String userId) {
-        int maxMessages = resolveMaxHistoryMessages();
+        int maxMessages = resolveMaxHistoryMessages(); // 8
         List<ConversationMessageVO> dbMessages = conversationMessageService.listMessages(
                 conversationId,
                 userId,
@@ -71,8 +74,12 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
         return normalizeHistory(result);
     }
 
+    /**
+     * 把用户的当前问题写入数据库、追加到总query里
+     */
     @Override
     public String append(String conversationId, String userId, ChatMessage message) {
+        // 构建消息
         ConversationMessageBO conversationMessage = ConversationMessageBO.builder()
                 .conversationId(conversationId)
                 .userId(userId)
@@ -81,8 +88,10 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 .thinkingContent(message.getThinkingContent())
                 .thinkingDuration(message.getThinkingDuration())
                 .build();
+        // 加入到数据库
         String messageId = conversationMessageService.addMessage(conversationMessage);
 
+        // 如果是用户提问，就把提问加入到会话里
         if (message.getRole() == ChatMessage.Role.USER) {
             ConversationCreateBO conversation = ConversationCreateBO.builder()
                     .conversationId(conversationId)
