@@ -57,14 +57,15 @@ public class StructureAwareTextChunker implements ChunkingStrategy {
     public List<VectorChunk> chunk(String text, ChunkingOptions config) {
         if (StrUtil.isBlank(text)) return List.of();
 
-        // 统一行尾：Windows \r\n → \n，老 Mac \r → \n，避免 \r 残留导致空行/标题识别失败
+        // 统一行尾换行符：Windows \r\n → \n，老 Mac \r → \n，避免 \r 残留导致空行/标题识别失败
         text = text.replace("\r\n", "\n").replace("\r", "\n");
 
+        // 扫描配置
         TextBoundaryOptions opts = (TextBoundaryOptions) config;
-        int effectiveTarget = opts.targetChars();
-        int effectiveMax = opts.maxChars();
-        int effectiveMin = opts.minChars();
-        int effectiveOverlap = opts.overlapChars();
+        int effectiveTarget = opts.targetChars(); // 目标 chunk 大小
+        int effectiveMax = opts.maxChars(); // 尽量不要超过的最大大小
+        int effectiveMin = opts.minChars(); //  太小的 chunk 尽量合并
+        int effectiveOverlap = opts.overlapChars(); // 相邻 chunk 的重叠字符数
 
         // 1) 扫描成“块”（记录原文的 start/end 下标，确保输出 substring 完全等于原文）
         List<Block> blocks = segmentToBlocks(text);
@@ -79,9 +80,11 @@ public class StructureAwareTextChunker implements ChunkingStrategy {
         }
 
         // 2) 依据 min/target/max 打包成 chunk（只在块边界切分）
+        // 把前面的得到的block往chunk里塞
         List<int[]> ranges = packBlocksToChunks(blocks, text.length(), effectiveMin, effectiveTarget, effectiveMax);
 
         // 3)（可选）加入重叠：为保持“只在块边界切分”，这里不在中间加重叠，若开启 overlap，仅复制“上一 chunk 的尾部全文子串”到下一 chunk 的开头
+        // 真正切块
         List<VectorChunk> out = materialize(text, ranges, effectiveOverlap);
 
         // 编号从 0 递增

@@ -30,11 +30,17 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RocketMQAutoConfiguration {
 
+    /**
+     * 事务消息监听器
+=    */
     @Bean
     public DelegatingTransactionListener delegatingTransactionListener() {
         return new DelegatingTransactionListener();
     }
 
+    /**
+     * 消息生产者适配器
+     */
     @Bean
     public MessageQueueProducer messageQueueProducer(RocketMQTemplate rocketMQTemplate,
                                                      DelegatingTransactionListener transactionListener) {

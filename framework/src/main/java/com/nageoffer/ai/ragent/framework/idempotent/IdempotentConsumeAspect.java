@@ -60,6 +60,7 @@ public final class IdempotentConsumeAspect {
                 + SpELUtil.parseKey(idempotentConsume.key(), ((MethodSignature) joinPoint.getSignature()).getMethod(), joinPoint.getArgs());
         long keyTimeoutSeconds = idempotentConsume.keyTimeout();
 
+        // 获取 Redis 中的幂等消费状态，幂等标识不存在则设置为“消费中”，并设置过期时间；存在则直接返回
         String absentAndGet = stringRedisTemplate.execute(
                 RedisScript.of(LUA_SCRIPT, String.class),
                 List.of(uniqueKey),
@@ -94,6 +95,7 @@ public final class IdempotentConsumeAspect {
     }
 
     /**
+     * AOP 拿到的 MethodSignature.getMethod() 不一定总是“实现类上的方法”，有时可能是接口方法或代理方法
      * @return 返回自定义防重复消费注解
      */
     public static IdempotentConsume getIdempotentConsumeAnnotation(ProceedingJoinPoint joinPoint) throws NoSuchMethodException {

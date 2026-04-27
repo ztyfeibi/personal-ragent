@@ -120,14 +120,19 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     public KnowledgeDocumentVO upload(String kbId, KnowledgeDocumentUploadRequest requestParam, MultipartFile file) {
+        // 先确认知识库存在，因为后续文件存储桶、向量空间和 embedding 模型都依赖知识库配置。
         KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(kbId);
         Assert.notNull(kbDO, () -> new ClientException("知识库不存在"));
 
+        // 统一解析文档来源，并校验 URL 定时拉取这类附加配置。
         SourceType sourceType = SourceType.normalize(requestParam.getSourceType());
         validateSourceAndSchedule(sourceType, requestParam);
+        // 将本地上传文件或远程 URL 文件保存到知识库对应的存储空间，只在数据库里保存文件地址。
         StoredFileDTO stored = resolveStoredFile(kbDO.getCollectionName(), sourceType, requestParam.getSourceLocation(), file);
+        // 解析文档处理模式：简单 chunk 模式保存分块策略，pipeline 模式保存流水线 ID。
         ProcessModeConfig modeConfig = resolveProcessModeConfig(requestParam);
 
+        // 上传阶段只登记文档元数据并置为 PENDING，不在 HTTP 请求里执行耗时的解析、分块和 embedding。
         KnowledgeDocumentDO documentDO = KnowledgeDocumentDO.builder()
                 .kbId(kbId)
                 .docName(stored.getOriginalFilename())
@@ -155,17 +160,20 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     public void startChunk(String docId) {
+        // 构造异步分块事件，消费者侧会用 operator 恢复 UserContext，保证审计字段能写入当前操作人。
         KnowledgeDocumentChunkEvent event = KnowledgeDocumentChunkEvent.builder()
                 .docId(docId)
                 .operator(UserContext.getUsername())
                 .build();
 
+        // 使用事务消息把“文档状态改为 RUNNING”和“发送分块任务”绑定在一起，避免任务丢失或重复启动。
         messageQueueProducer.sendInTransaction(
                 chunkTopic,
                 docId,
                 "文档分块",
                 event,
                 arg -> {
+                    // 只有非 RUNNING 状态才能切换为 RUNNING，用数据库条件更新实现并发防重。
                     int updated = documentMapper.update(
                             new LambdaUpdateWrapper<KnowledgeDocumentDO>()
                                     .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
@@ -179,7 +187,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                         throw new ClientException("文档分块操作正在进行中，请稍后再试");
                     }
                     KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
+                    // 将 kbId 填回事件，方便事务检查或消费日志定位任务所属知识库。
                     event.setKbId(documentDO.getKbId());
+                    // 启动分块时同步定时任务配置，URL 文档可以在后续周期性刷新。
                     scheduleService.upsertSchedule(documentDO);
                 }
         );
@@ -187,6 +197,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     public void executeChunk(String docId) {
+        // MQ 消费入口：根据 docId 重新读取文档，避免事件中的旧数据影响实际处理。
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         if (documentDO == null) {
             log.warn("文档不存在，跳过分块任务, docId={}", docId);
@@ -196,10 +207,21 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         runChunkTask(documentDO);
     }
 
+
+    /**
+     * 插入分块日志 RUNNING
+     *   -> 判断 processMode
+     *     -> chunk 模式：runChunkProcess()
+     *     -> pipeline 模式：runPipelineProcess()
+     *   -> 统一持久化 chunk + vector
+     *   -> 更新日志 SUCCESS / FAILED
+     *   -> 更新文档状态
+     */
     private void runChunkTask(KnowledgeDocumentDO documentDO) {
         String docId = documentDO.getId();
         ProcessMode processMode = ProcessMode.normalize(documentDO.getProcessMode());
 
+        // 先落一条运行日志，后续无论成功还是失败都会回填耗时、数量和错误信息。
         KnowledgeDocumentChunkLogDO chunkLog = KnowledgeDocumentChunkLogDO.builder()
                 .docId(docId)
                 .status(DocumentStatus.RUNNING.getCode())
@@ -219,10 +241,12 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         try {
             List<VectorChunk> chunkResults;
             if (ProcessMode.PIPELINE == processMode) {
+                // pipeline 模式把解析、增强、分块、embedding 交给 ingestion 引擎编排执行。
                 long start = System.currentTimeMillis();
                 chunkResults = runPipelineProcess(documentDO);
                 chunkDuration = System.currentTimeMillis() - start;
             } else {
+                // chunk 模式走内置的固定/结构化分块策略，流程固定为 Extract -> Chunk -> Embed。
                 ChunkProcessResult result = runChunkProcess(documentDO);
                 extractDuration = result.extractDuration();
                 chunkDuration = result.chunkDuration();
@@ -232,6 +256,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
             long persistStart = System.currentTimeMillis();
             String collectionName = resolveCollectionName(documentDO.getKbId());
+            // 两种模式最终都在这里统一写 chunk 表和向量库，保证文档状态、分块记录和向量数据一致。
             int savedCount = persistChunksAndVectorsAtomically(collectionName, docId, chunkResults);
             persistDuration = System.currentTimeMillis() - persistStart;
 
@@ -240,6 +265,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                     extractDuration, chunkDuration, embedDuration, persistDuration, totalDuration, null);
         } catch (Exception e) {
             log.error("文档分块任务执行失败：docId={}", docId, e);
+            // 任一阶段异常都把文档标记为 FAILED，并把错误写入分块日志，便于前端展示和排查。
             markChunkFailed(documentDO.getId());
             long totalDuration = System.currentTimeMillis() - totalStartTime;
             updateChunkLog(chunkLog.getId(), DocumentStatus.FAILED.getCode(), 0,
@@ -248,6 +274,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private int persistChunksAndVectorsAtomically(String collectionName, String docId, List<VectorChunk> chunkResults) {
+        // VectorChunk 是处理过程中的内存对象，写业务 chunk 表前先转换为创建请求。
         List<KnowledgeChunkCreateRequest> chunks = chunkResults.stream()
                 .map(vc -> {
                     KnowledgeChunkCreateRequest req = new KnowledgeChunkCreateRequest();
@@ -258,10 +285,12 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 })
                 .toList();
         transactionOperations.executeWithoutResult(status -> {
+            // 采用“先删旧数据，再写新数据”的全量重建方式，避免旧 chunk 和旧向量残留。
             knowledgeChunkService.deleteByDocId(docId);
             knowledgeChunkService.batchCreate(docId, chunks);
             vectorStoreService.deleteDocumentVectors(collectionName, docId);
             vectorStoreService.indexDocumentChunks(collectionName, docId, chunkResults);
+            // chunk 表和向量库写入成功后，再把文档状态置为 SUCCESS 并更新 chunk 数量。
             KnowledgeDocumentDO updateDocumentDO = KnowledgeDocumentDO.builder()
                     .id(docId)
                     .chunkCount(chunks.size())
@@ -276,6 +305,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private void updateChunkLog(String logId, String status, int chunkCount, long extractDuration,
                                 long chunkDuration, long embedDuration, long persistDuration,
                                 long totalDuration, String errorMessage) {
+        // 将每个阶段耗时拆开记录，便于判断瓶颈是在解析、分块、embedding 还是持久化。
         KnowledgeDocumentChunkLogDO update = KnowledgeDocumentChunkLogDO.builder()
                 .id(logId)
                 .status(status)
@@ -349,6 +379,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         String docId = String.valueOf(documentDO.getId());
         String pipelineId = documentDO.getPipelineId();
 
+        // pipeline 模式必须指定流水线，否则 ingestion 引擎不知道该按哪些节点处理文档。
         if (pipelineId == null) {
             throw new IllegalStateException("Pipeline模式下Pipeline ID为空：docId=" + docId);
         }
@@ -359,11 +390,13 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
         byte[] fileBytes;
         try (InputStream is = fileStorageService.openStream(documentDO.getFileUrl())) {
+            // ingestion 引擎以 IngestionContext 传递原始字节，因此这里把存储文件重新读入内存。
             fileBytes = is.readAllBytes();
         } catch (Exception e) {
             throw new RuntimeException("读取文件内容失败：docId=" + docId, e);
         }
 
+        // 构造 pipeline 上下文：包含原始文件、MIME、向量空间等运行时信息。
         IngestionContext context = IngestionContext.builder()
                 .taskId(docId)
                 .pipelineId(pipelineId)
@@ -372,9 +405,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .vectorSpaceId(VectorSpaceId.builder()
                         .logicalName(kbDO.getCollectionName())
                         .build())
+                // knowledge 模块统一负责最终落 chunk 表和向量库，pipeline 这里只产出 chunks。
                 .skipIndexerWrite(true)
                 .build();
 
+        // 交给 ingestion 引擎按 PipelineDefinition 的节点顺序执行。
         IngestionContext result = ingestionEngine.execute(pipelineDef, context);
 
         if (result.getError() != null) {
@@ -391,6 +426,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     public void chunkDocument(KnowledgeDocumentDO documentDO) {
+        // 给定时任务或内部调用提供的同步入口，外层已拿到文档对象时可直接复用主流程。
         if (documentDO == null) {
             return;
         }
@@ -399,6 +435,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private void markChunkFailed(String docId) {
         transactionOperations.executeWithoutResult(status -> {
+            // 只更新文档状态，不处理 chunk 和向量；失败现场留给日志和已有数据辅助排查。
             KnowledgeDocumentDO update = new KnowledgeDocumentDO();
             update.setId(docId);
             update.setStatus(DocumentStatus.FAILED.getCode());
@@ -420,9 +457,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
         knowledgeChunkService.deleteByDocId(docId);
         scheduleService.deleteByDocId(docId);
+        // 删除文档时同步清理历史分块日志，避免前端还能看到已删除文档的执行记录。
         chunkLogMapper.delete(Wrappers.lambdaQuery(KnowledgeDocumentChunkLogDO.class)
                 .eq(KnowledgeDocumentChunkLogDO::getDocId, docId));
 
+        // 业务表走逻辑删除，向量库和文件存储走物理清理。
         documentDO.setDeleted(1);
         documentDO.setUpdatedBy(UserContext.getUsername());
         documentMapper.deleteById(documentDO);
@@ -455,6 +494,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ClientException("文档名称不能为空");
         }
 
+        // 先构造基础更新条件，后面根据是否传 processMode 决定补充 chunk 或 pipeline 配置。
         LambdaUpdateWrapper<KnowledgeDocumentDO> updateWrapper = Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
                 .eq(KnowledgeDocumentDO::getId, documentDO.getId())
                 .set(KnowledgeDocumentDO::getDocName, docName.trim())
@@ -466,6 +506,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             updateWrapper.set(KnowledgeDocumentDO::getProcessMode, processMode.getValue());
 
             if (ProcessMode.CHUNK == processMode) {
+                // chunk 模式要求分块策略和分块参数完整可用。
                 ChunkingMode chunkingMode = ChunkingMode.fromValue(requestParam.getChunkStrategy());
                 String chunkConfig = validateAndNormalizeChunkConfig(chunkingMode, requestParam.getChunkConfig());
                 updateWrapper.set(KnowledgeDocumentDO::getChunkStrategy, chunkingMode.getValue());
@@ -476,6 +517,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                     throw new ClientException("使用Pipeline模式时，必须指定Pipeline ID");
                 }
                 try {
+                    // pipeline 模式只保存 pipelineId，具体节点配置由 ingestion 模块管理。
                     ingestionPipelineService.get(requestParam.getPipelineId());
                 } catch (Exception e) {
                     throw new ClientException("指定的Pipeline不存在: " + requestParam.getPipelineId());
@@ -536,6 +578,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         documentMapper.update(updateWrapper);
 
         if (scheduleChanged) {
+            // 文档定时配置变化后，同步刷新调度表，保证下一次调度按新配置执行。
             KnowledgeDocumentDO updated = documentMapper.selectById(docId);
             scheduleService.upsertSchedule(updated);
         }
@@ -543,6 +586,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     public IPage<KnowledgeDocumentVO> page(String kbId, KnowledgeDocumentPageRequest requestParam) {
+        // 按知识库维度分页查询文档，支持名称关键字和处理状态过滤。
         Page<KnowledgeDocumentDO> pageParam = new Page<>(requestParam.getCurrent(), requestParam.getSize());
         LambdaQueryWrapper<KnowledgeDocumentDO> queryWrapper = Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
                 .eq(KnowledgeDocumentDO::getKbId, kbId)
@@ -557,6 +601,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     public List<KnowledgeDocumentSearchVO> search(String keyword, int limit) {
+        // 全局文档搜索只按文档名模糊匹配，limit 做边界保护，避免一次返回过多数据。
         if (!StringUtils.hasText(keyword)) {
             return Collections.emptyList();
         }
@@ -586,6 +631,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             return records;
         }
 
+        // 批量查询知识库名称，避免逐条文档回表造成 N+1 查询。
         List<KnowledgeBaseDO> bases = knowledgeBaseMapper.selectByIds(kbIds);
         Map<String, String> nameMap = new HashMap<>();
         if (bases != null) {
@@ -622,6 +668,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         // 启用时：embed 耗时较长，在事务外提前执行，避免长事务占用连接
         List<VectorChunk> vectorChunks = null;
         if (enabled) {
+            // 重新启用文档时，需要把业务 chunk 重新 embedding 并写回向量库。
             List<KnowledgeChunkVO> chunks = knowledgeChunkService.listByDocId(docId);
             vectorChunks = chunks.stream().map(each ->
                     VectorChunk.builder()
@@ -639,6 +686,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
         final List<VectorChunk> finalVectorChunks = vectorChunks;
         transactionOperations.executeWithoutResult(status -> {
+            // 文档启停、chunk 启停和向量库增删放在一个事务边界中，尽量保持业务状态一致。
             documentDO.setEnabled(targetEnabled);
             documentDO.setUpdatedBy(UserContext.getUsername());
             documentMapper.updateById(documentDO);
@@ -646,6 +694,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             knowledgeChunkService.updateEnabledByDocId(docId, String.valueOf(kbDO.getId()), enabled);
 
             if (!enabled) {
+                // 禁用文档时删除该文档所有向量，避免检索阶段命中禁用内容。
                 vectorStoreService.deleteDocumentVectors(collectionName, docId);
             } else {
                 vectorStoreService.indexDocumentChunks(collectionName, docId, finalVectorChunks);
@@ -655,6 +704,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     public IPage<KnowledgeDocumentChunkLogVO> getChunkLogs(String docId, Page<KnowledgeDocumentChunkLogVO> page) {
+        // 查询某个文档的分块执行历史，用于前端展示每次处理是否成功以及各阶段耗时。
         Page<KnowledgeDocumentChunkLogDO> mpPage = new Page<>(page.getCurrent(), page.getSize());
         LambdaQueryWrapper<KnowledgeDocumentChunkLogDO> qw = new LambdaQueryWrapper<KnowledgeDocumentChunkLogDO>()
                 .eq(KnowledgeDocumentChunkLogDO::getDocId, docId)
@@ -665,6 +715,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         List<KnowledgeDocumentChunkLogDO> records = result.getRecords();
         Map<String, String> pipelineNameMap = new HashMap<>();
         if (CollUtil.isNotEmpty(records)) {
+            // 日志只保存 pipelineId，这里批量补齐 pipeline 名称，便于页面展示。
             Set<String> pipelineIds = new HashSet<>();
             for (KnowledgeDocumentChunkLogDO record : records) {
                 if (record.getPipelineId() != null) {
@@ -689,6 +740,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             }
             Long totalDuration = each.getTotalDuration();
             if (totalDuration != null) {
+                // otherDuration 表示除已明确统计阶段外的额外耗时，比如调度、上下文构建等。
                 long other = getOther(each, totalDuration);
                 vo.setOtherDuration(Math.max(0, other));
             }
@@ -710,14 +762,17 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private String resolveCollectionName(String kbId) {
+        // 向量库 collectionName 存在知识库表中，文档和 chunk 只保存 kbId。
         return knowledgeBaseMapper.selectById(kbId).getCollectionName();
     }
 
     private boolean isScheduleEnabled(SourceType sourceType, KnowledgeDocumentUploadRequest request) {
+        // 当前只有 URL 文档支持定时拉取，本地上传文件不参与远程刷新。
         return SourceType.URL == sourceType && Boolean.TRUE.equals(request.getScheduleEnabled());
     }
 
     private void validateSourceAndSchedule(SourceType sourceType, KnowledgeDocumentUploadRequest request) {
+        // URL 来源必须提供远程地址，否则无法抓取并保存原始文件。
         String sourceLocation = StrUtil.trimToNull(request.getSourceLocation());
         if (SourceType.URL == sourceType && !StringUtils.hasText(sourceLocation)) {
             throw new ClientException("来源地址不能为空");
@@ -725,6 +780,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         if (!isScheduleEnabled(sourceType, request)) {
             return;
         }
+        // 启用定时拉取时必须校验 cron，同时限制最小执行间隔，避免过于频繁地抓取和重建索引。
         String scheduleCron = StrUtil.trimToNull(request.getScheduleCron());
         if (!StringUtils.hasText(scheduleCron)) {
             throw new ClientException("定时表达式不能为空");
@@ -739,6 +795,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private ProcessModeConfig resolveProcessModeConfig(KnowledgeDocumentUploadRequest request) {
+        // processMode 决定后续分块任务走内置 chunk 流程还是 ingestion pipeline 流程。
         ProcessMode processMode = ProcessMode.normalize(request.getProcessMode());
         if (ProcessMode.CHUNK == processMode) {
             ChunkingMode chunkingMode = ChunkingMode.fromValue(request.getChunkStrategy());
@@ -758,6 +815,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private StoredFileDTO resolveStoredFile(String bucketName, SourceType sourceType, String sourceLocation, MultipartFile file) {
+        // 本地上传和远程 URL 最终都会落到统一文件存储，后续处理只关心 StoredFileDTO。
         if (SourceType.FILE == sourceType) {
             Assert.notNull(file, () -> new ClientException("上传文件不能为空"));
             return fileStorageService.upload(bucketName, file);
@@ -766,11 +824,13 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private ChunkingOptions buildChunkingOptions(ChunkingMode mode, KnowledgeDocumentDO documentDO) {
+        // 将数据库里的 JSON 配置解析成具体分块策略需要的配置对象。
         Map<String, Object> config = parseChunkConfig(documentDO.getChunkConfig());
         return mode.createOptions(config);
     }
 
     private String validateAndNormalizeChunkConfig(ChunkingMode mode, String chunkConfigJson) {
+        // 上传或更新文档时提前校验分块配置，避免任务运行到分块阶段才失败。
         if (!StringUtils.hasText(chunkConfigJson)) {
             return null;
         }
@@ -794,6 +854,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private Map<String, Object> parseChunkConfig(String json) {
+        // 运行时解析失败时退回默认配置，让分块策略尽量可执行，同时记录 warn 方便排查。
         if (!StringUtils.hasText(json)) {
             return Map.of();
         }
@@ -807,6 +868,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private void deleteStoredFileQuietly(KnowledgeDocumentDO documentDO) {
+        // 删除文档时尝试清理原始文件；失败不阻断主流程，只记录日志。
         if (documentDO == null || !StringUtils.hasText(documentDO.getFileUrl())) {
             return;
         }

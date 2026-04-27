@@ -25,6 +25,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
  */
 public final class UserContext {
 
+    // 全局单例，但是每个线程隔离
     private static final TransmittableThreadLocal<LoginUser> CONTEXT = new TransmittableThreadLocal<>();
 
     /**

@@ -46,7 +46,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
  *   <li>跳过异步调度请求（如 SSE 完成回调），避免 SaToken 上下文丢失问题</li>
  * </ul>
  *
- * @author nageoffer
  * @see UserContext
  * @see LoginUser
  */

@@ -61,22 +61,34 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 @RequiredArgsConstructor
 public class StreamChatPipeline {
 
+    // 会话记忆
     private final ConversationMemoryService memoryService;
+    // 问题改写
     private final QueryRewriteService queryRewriteService;
+    // 意图识别
     private final IntentResolver intentResolver;
+    // 检索指引、歧义
     private final IntentGuidanceService guidanceService;
+    // 检索引擎
     private final RetrievalEngine retrievalEngine;
-    private final LLMService llmService;
+    // prompt组装
     private final RAGPromptService promptBuilder;
+    // llm对话
+    private final LLMService llmService;
+    // 提示词
     private final PromptTemplateLoader promptTemplateLoader;
+    // 流式任务管理
     private final StreamTaskManager taskManager;
 
     /**
      * 执行流式对话管道
      */
     public void execute(StreamChatContext ctx) {
+        // 加载记忆
         loadMemory(ctx);
+        // 重写问题
         rewriteQuery(ctx);
+        // 解析意图
         resolveIntents(ctx);
 
         if (handleGuidance(ctx)) {

@@ -44,6 +44,7 @@ public class SseEmitterSender {
 
     /**
      * Spring 的 SseEmitter 实例，用于实际的 SSE 通信
+     * 只要连接结束，就把状态置为关
      */
     public SseEmitterSender(SseEmitter emitter) {
         this.emitter = emitter;

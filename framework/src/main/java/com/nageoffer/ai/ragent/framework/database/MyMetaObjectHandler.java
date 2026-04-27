@@ -23,7 +23,7 @@ import org.apache.ibatis.reflection.MetaObject;
 import java.util.Date;
 
 /**
- * MyBatis-Plus 源数据自动填充类
+ * MyBatis-Plus 源数据自动填充字段
  */
 public class MyMetaObjectHandler implements MetaObjectHandler {
 
