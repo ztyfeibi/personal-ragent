@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +47,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 
 /**
  * 流式对话流水线
@@ -61,51 +61,37 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 @RequiredArgsConstructor
 public class StreamChatPipeline {
 
-    // 会话记忆
+    private final SearchChannelProperties searchProperties;
     private final ConversationMemoryService memoryService;
-    // 问题改写
     private final QueryRewriteService queryRewriteService;
-    // 意图识别
     private final IntentResolver intentResolver;
-    // 检索指引、歧义
     private final IntentGuidanceService guidanceService;
-    // 检索引擎
     private final RetrievalEngine retrievalEngine;
-    // prompt组装
-    private final RAGPromptService promptBuilder;
-    // llm对话
     private final LLMService llmService;
-    // 提示词
+    private final RAGPromptService promptBuilder;
     private final PromptTemplateLoader promptTemplateLoader;
-    // 流式任务管理
     private final StreamTaskManager taskManager;
 
     /**
      * 执行流式对话管道
      */
     public void execute(StreamChatContext ctx) {
-        // 加载记忆
         loadMemory(ctx);
-        // 重写问题
         rewriteQuery(ctx);
-        // 解析意图
         resolveIntents(ctx);
 
-        // 如果要引导澄清
         if (handleGuidance(ctx)) {
             return;
         }
-        // 如果只是系统调用
         if (handleSystemOnly(ctx)) {
             return;
         }
-        // 执行检索
+
         RetrievalContext retrievalCtx = retrieve(ctx);
-        // 没有检索到内容
         if (handleEmptyRetrieval(ctx, retrievalCtx)) {
             return;
         }
-        // 检索到内容，正常回答
+
         streamRagResponse(ctx, retrievalCtx);
     }
 
@@ -168,7 +154,7 @@ public class StreamChatPipeline {
     }
 
     private RetrievalContext retrieve(StreamChatContext ctx) {
-        return retrievalEngine.retrieve(ctx.getSubIntents(), DEFAULT_TOP_K);
+        return retrievalEngine.retrieve(ctx.getSubIntents(), searchProperties.getDefaultTopK());
     }
 
     private boolean handleEmptyRetrieval(StreamChatContext ctx, RetrievalContext retrievalCtx) {

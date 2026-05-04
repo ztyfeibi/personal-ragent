@@ -4,7 +4,14 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
 import type { SystemSettings } from "@/services/settingsService";
 import { getSystemSettings } from "@/services/settingsService";
 import { getErrorMessage } from "@/utils/error";
@@ -115,7 +122,10 @@ export function SystemSettingsPage() {
         <CardContent className="grid gap-4 md:grid-cols-3">
           <InfoItem label="History Keep Turns" value={rag.memory.historyKeepTurns} />
           <InfoItem label="Summary Start Turns" value={rag.memory.summaryStartTurns} />
-          <InfoItem label="Summary Enabled" value={<BoolBadge value={rag.memory.summaryEnabled} />} />
+          <InfoItem
+            label="Summary Enabled"
+            value={<BoolBadge value={rag.memory.summaryEnabled} />}
+          />
           <InfoItem label="Summary Max Chars" value={rag.memory.summaryMaxChars} />
           <InfoItem label="Title Max Length" value={rag.memory.titleMaxLength} />
         </CardContent>

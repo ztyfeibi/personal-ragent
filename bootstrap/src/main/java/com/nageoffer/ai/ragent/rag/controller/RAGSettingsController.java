@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.DefaultSetting
 import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.MemorySettings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.StringUtils;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -111,7 +112,7 @@ public class RAGSettingsController {
         if (props.getProviders() != null) {
             props.getProviders().forEach((k, v) -> providers.put(k, AISettings.ProviderConfig.builder()
                     .url(v.getUrl())
-                    .apiKey(v.getApiKey())
+                    .apiKey(maskApiKey(v.getApiKey()))
                     .endpoints(v.getEndpoints())
                     .build()));
         }
@@ -121,13 +122,17 @@ public class RAGSettingsController {
                 .chat(toModelGroup(props.getChat()))
                 .embedding(toModelGroup(props.getEmbedding()))
                 .rerank(toModelGroup(props.getRerank()))
-                .selection(props.getSelection() == null ? null : AISettings.Selection.builder()
-                        .failureThreshold(props.getSelection().getFailureThreshold())
-                        .openDurationMs(props.getSelection().getOpenDurationMs())
-                        .build())
-                .stream(props.getStream() == null ? null : AISettings.Stream.builder()
-                        .messageChunkSize(props.getStream().getMessageChunkSize())
-                        .build())
+                .selection(props.getSelection() == null
+                        ? null
+                        : AISettings.Selection.builder()
+                          .failureThreshold(props.getSelection().getFailureThreshold())
+                          .openDurationMs(props.getSelection().getOpenDurationMs())
+                          .build())
+                .stream(props.getStream() == null
+                        ? null
+                        : AISettings.Stream.builder()
+                          .messageChunkSize(props.getStream().getMessageChunkSize())
+                          .build())
                 .build();
     }
 
@@ -138,18 +143,31 @@ public class RAGSettingsController {
         return AISettings.ModelGroup.builder()
                 .defaultModel(group.getDefaultModel())
                 .deepThinkingModel(group.getDeepThinkingModel())
-                .candidates(group.getCandidates() == null ? null : group.getCandidates().stream()
-                        .map(c -> AISettings.ModelCandidate.builder()
-                                .id(c.getId())
-                                .provider(c.getProvider())
-                                .model(c.getModel())
-                                .url(c.getUrl())
-                                .dimension(c.getDimension())
-                                .priority(c.getPriority())
-                                .enabled(c.getEnabled())
-                                .supportsThinking(c.getSupportsThinking())
-                                .build())
-                        .collect(Collectors.toList()))
+                .candidates(group.getCandidates() == null
+                        ? null
+                        : group.getCandidates().stream()
+                          .map(c -> AISettings.ModelCandidate.builder()
+                                    .id(c.getId())
+                                    .provider(c.getProvider())
+                                    .model(c.getModel())
+                                    .url(c.getUrl())
+                                    .dimension(c.getDimension())
+                                    .priority(c.getPriority())
+                                    .enabled(c.getEnabled())
+                                    .supportsThinking(c.getSupportsThinking())
+                                    .build())
+                          .collect(Collectors.toList()))
                 .build();
+    }
+
+    private String maskApiKey(String apiKey) {
+        if (!StringUtils.hasText(apiKey)) {
+            return null;
+        }
+        String trimmed = apiKey.trim();
+        if (trimmed.length() <= 10) {
+            return "******";
+        }
+        return trimmed.substring(0, 6) + "***" + trimmed.substring(trimmed.length() - 4);
     }
 }
