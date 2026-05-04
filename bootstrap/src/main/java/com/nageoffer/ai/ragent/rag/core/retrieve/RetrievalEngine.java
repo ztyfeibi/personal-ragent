@@ -126,6 +126,9 @@ public class RetrievalEngine {
                 .build();
     }
 
+    /**
+     * 执行kb和mcp检索
+     */
     private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK) {
         List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
         List<NodeScore> mcpIntents = NodeScoreFilters.mcp(intent.nodeScores());

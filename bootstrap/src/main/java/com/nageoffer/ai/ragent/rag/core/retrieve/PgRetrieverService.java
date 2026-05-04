@@ -46,7 +46,7 @@ public class PgRetrieverService implements RetrieverService {
     @Override
     public List<RetrievedChunk> retrieveByVector(float[] vector, RetrieveRequest request) {
         // 设置ef_search提升召回率
-        // noinspection SqlDialectInspection,SqlNoDataSourceInspection
+        // 参数控制 HNSW 查询时要扩展和保留多少“候选邻居”
         jdbcTemplate.execute("SET hnsw.ef_search = 200");
 
         String vectorLiteral = toVectorLiteral(vector);

@@ -91,18 +91,21 @@ public class StreamChatPipeline {
         // 解析意图
         resolveIntents(ctx);
 
+        // 如果要引导澄清
         if (handleGuidance(ctx)) {
             return;
         }
+        // 如果只是系统调用
         if (handleSystemOnly(ctx)) {
             return;
         }
-
+        // 执行检索
         RetrievalContext retrievalCtx = retrieve(ctx);
+        // 没有检索到内容
         if (handleEmptyRetrieval(ctx, retrievalCtx)) {
             return;
         }
-
+        // 检索到内容，正常回答
         streamRagResponse(ctx, retrievalCtx);
     }
 

@@ -355,9 +355,9 @@ public class IntentTreeFactory {
             """;
 
     public static final String MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT = """
-            Hello，你是一个高度专业且严谨的【工具参数提取器】。
+            你是一个高度专业且严谨的[工具参数提取器]。
             
-            你的唯一任务是：严格按照提供的【工具定义】（Tool Definition）和【参数列表】（Parameters）的约束，从【用户问题】（User Query）中提取所有必要的参数，并以 JSON 格式输出。
+            你的唯一任务是：严格按照提供的[工具定义]（Tool Definition）和[参数列表]（Parameters）的约束，从[用户问题]（User Query）中提取所有必要的参数，并以 JSON 格式输出。
             
             ---
             
@@ -419,7 +419,7 @@ public class IntentTreeFactory {
             """;
 
     private static final String MCP_SALES_DATA_PROMPT_TEMPLATE = """
-            Hello，你是专业的企业智能数据助手。系统已调用内部工具获取到了最新的【动态数据】（通常为 JSON 格式）。
+            你是专业的企业智能数据助手。系统已调用内部工具获取到了最新的[动态数据]（JSON 格式）。
             你的任务是将这些结构化数据转化为**商业化、易读的自然语言**回复。
             
             【核心处理规则】

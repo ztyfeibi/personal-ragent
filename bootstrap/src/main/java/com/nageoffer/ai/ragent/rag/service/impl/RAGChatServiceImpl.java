@@ -48,15 +48,17 @@ public class RAGChatServiceImpl implements RAGChatService {
     @Override
     @ChatRateLimit
     public void streamChat(String question, String conversationId, Boolean deepThinking, SseEmitter emitter) {
+        // 会话id
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
+        // 任务id，没有就雪花算法生成一个
         String taskId = StrUtil.isBlank(RagTraceContext.getTaskId())
                 ? IdUtil.getSnowflakeNextIdStr()
                 : RagTraceContext.getTaskId();
         log.info("开始流式对话，会话ID：{}，任务ID：{}", actualConversationId, taskId);
         boolean thinkingEnabled = Boolean.TRUE.equals(deepThinking);
-
+        // 创建回调对象
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
-
+        // 创建context
         StreamChatContext ctx = StreamChatContext.builder()
                 .question(question)
                 .conversationId(actualConversationId)
@@ -65,7 +67,7 @@ public class RAGChatServiceImpl implements RAGChatService {
                 .userId(UserContext.getUserId())
                 .callback(callback)
                 .build();
-
+        // 开始执行
         try {
             chatPipeline.execute(ctx);
         } catch (Exception e) {

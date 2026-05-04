@@ -55,7 +55,7 @@ public class StreamChatEventHandler implements StreamCallback {
     private int thinkingDurationSeconds;
 
     /**
-     * 使用参数对象构造（推荐）
+     * 使用参数对象构造
      *
      * @param params 构建参数
      */
